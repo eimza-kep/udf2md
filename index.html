@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UDF → Markdown Dönüştürücü | UYAP Dosyalarını AI-Ready Hale Getirin</title>
+    <meta name="description" content="UYAP .udf dosyalarını yapay zeka ve LLM araçlarının okuyabileceği Markdown formatına dönüştüren %100 tarayıcı tabanlı açık kaynak araç.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #fafafa;
+            --surface: #ffffff;
+            --border: #e4e4e7;
+            --text: #09090b;
+            --text-muted: #71717a;
+            --accent: #18181b;
+            --accent-hover: #27272a;
+            --success: #22c55e;
+            --radius: 12px;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --mono: 'JetBrains Mono', ui-monospace, monospace;
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ---- Header ---- */
+        .header {
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 50;
+        }
+        .header-inner {
+            max-width: 1100px; margin: 0 auto;
+            padding: 0 24px; height: 56px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--text); font-weight: 700; font-size: 1.1rem; }
+        .logo i { font-size: 1.4rem; }
+        .header-links { display: flex; gap: 12px; align-items: center; }
+        .header-links a {
+            font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
+            text-decoration: none; padding: 6px 12px; border-radius: 8px;
+            transition: all 0.15s;
+        }
+        .header-links a:hover { color: var(--text); background: var(--bg); }
+        .header-links .gh-btn {
+            background: var(--accent); color: #fff; border-radius: 9999px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .header-links .gh-btn:hover { background: var(--accent-hover); color: #fff; }
+
+        /* ---- Hero ---- */
+        .hero {
+            text-align: center; padding: 64px 24px 40px;
+            max-width: 700px; margin: 0 auto;
+        }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.75rem; font-weight: 700;
+            background: var(--accent); color: #fff;
+            padding: 5px 14px; border-radius: 9999px; margin-bottom: 20px;
+        }
+        .hero-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .hero h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
+        .hero p { color: var(--text-muted); font-size: 1.05rem; line-height: 1.6; }
+        .hero .privacy-note { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; color: var(--success); margin-top: 16px; }
+
+        /* ---- Drop Zone ---- */
+        .converter-area {
+            max-width: 1100px; margin: 0 auto 64px;
+            padding: 0 24px; display: grid;
+            grid-template-columns: 1fr 1fr; gap: 24px;
+        }
+        @media (max-width: 768px) { .converter-area { grid-template-columns: 1fr; } }
+
+        .panel {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); display: flex; flex-direction: column;
+            min-height: 450px; overflow: hidden;
+        }
+        .panel-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .panel-title { font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .panel-body { flex: 1; position: relative; overflow: auto; }
+
+        .dropzone {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; cursor: pointer; padding: 40px 24px; text-align: center;
+            transition: all 0.2s;
+        }
+        .dropzone.dragover { background: #f4f4f5; }
+        .dropzone .drop-icon { font-size: 3rem; color: var(--text-muted); margin-bottom: 16px; }
+        .dropzone h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+        .dropzone p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+        .dropzone .btn-browse {
+            margin-top: 16px; background: var(--accent); color: #fff;
+            border: none; padding: 10px 24px; border-radius: 9999px;
+            font-size: 0.85rem; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background 0.15s;
+        }
+        .dropzone .btn-browse:hover { background: var(--accent-hover); }
+
+        .file-loaded {
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; padding: 40px 24px; text-align: center;
+        }
+        .file-loaded.active { display: flex; }
+        .file-loaded .file-icon { font-size: 3rem; color: var(--success); margin-bottom: 12px; }
+        .file-loaded .file-name { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+        .file-loaded .file-meta { font-size: 0.8rem; color: var(--text-muted); }
+        .file-loaded .btn-new {
+            margin-top: 20px; background: transparent; color: var(--text-muted);
+            border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px;
+            font-size: 0.8rem; font-weight: 600; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .file-loaded .btn-new:hover { color: var(--text); border-color: var(--text); }
+
+        /* Output */
+        .md-output {
+            font-family: var(--mono); font-size: 0.82rem;
+            white-space: pre-wrap; word-break: break-word;
+            padding: 20px; line-height: 1.65; color: #27272a;
+            height: 100%; overflow-y: auto;
+        }
+        .md-output:empty::before {
+            content: "Dönüştürülen Markdown burada görünecek...";
+            color: #a1a1aa; font-style: italic;
+        }
+
+        /* Action Buttons */
+        .action-bar {
+            padding: 12px 20px; border-top: 1px solid var(--border);
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .btn-action {
+            background: var(--accent); color: #fff;
+            border: none; padding: 8px 16px; border-radius: 8px;
+            font-size: 0.8rem; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background 0.15s; font-family: var(--font);
+        }
+        .btn-action:hover { background: var(--accent-hover); }
+        .btn-action.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+        .btn-action.secondary:hover { background: var(--bg); }
+        .btn-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .stats { font-size: 0.75rem; color: var(--text-muted); margin-left: auto; font-weight: 500; }
+
+        /* Footer */
+        .footer {
+            margin-top: auto; border-top: 1px solid var(--border); padding: 24px;
+            text-align: center; font-size: 0.8rem; color: var(--text-muted);
+        }
+        .footer a { color: var(--text); text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-inner">
+            <a href="./" class="logo">
+                <i class="ph-fill ph-file-md"></i>
+                <span>udf2md</span>
+            </a>
+            <div class="header-links">
+                <a href="#nasil">Nasıl Çalışır?</a>
+                <a href="https://github.com/eimza-kep/udf2md" target="_blank" class="gh-btn">
+                    <i class="ph-fill ph-github-logo"></i> GitHub
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-badge"><span class="dot"></span> Açık Kaynak & %100 İstemci Taraflı</div>
+        <h1>UDF Dosyalarını<br>Markdown'a Dönüştürün</h1>
+        <p>UYAP .udf belgelerinizi ChatGPT, Gemini, Claude ve diğer yapay zeka araçlarının kolayca okuyabileceği <strong>.md</strong> formatına çevirin. Belgeler hiçbir sunucuya gönderilmez.</p>
+        <div class="privacy-note"><i class="ph-fill ph-lock-key"></i> KVKK Uyumlu — Tüm işlemler tarayıcınızda yapılır</div>
+    </section>
+
+    <!-- Converter -->
+    <div class="converter-area">
+        <!-- Left: Input -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title"><i class="ph ph-upload-simple"></i> UDF Dosyası</span>
+            </div>
+            <div class="panel-body">
+                <div class="dropzone" id="dropzone">
+                    <div class="drop-icon"><i class="ph ph-file-arrow-up"></i></div>
+                    <h3>UDF dosyanızı sürükleyip bırakın</h3>
+                    <p>veya bilgisayarınızdan seçmek için aşağıdaki düğmeye tıklayın.</p>
+                    <button class="btn-browse" id="btnBrowse"><i class="ph ph-folder-open"></i> Dosya Seç</button>
+                </div>
+                <div class="file-loaded" id="fileLoaded">
+                    <div class="file-icon"><i class="ph-fill ph-check-circle"></i></div>
+                    <div class="file-name" id="fileName"></div>
+                    <div class="file-meta" id="fileMeta"></div>
+                    <button class="btn-new" id="btnNewFile"><i class="ph ph-arrow-counter-clockwise"></i> Başka Dosya Yükle</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Output -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title"><i class="ph ph-file-md"></i> Markdown Çıktısı</span>
+                <span class="stats" id="stats"></span>
+            </div>
+            <div class="panel-body">
+                <div class="md-output" id="mdOutput"></div>
+            </div>
+            <div class="action-bar">
+                <button class="btn-action" id="btnDownload" disabled><i class="ph ph-download-simple"></i> .md İndir</button>
+                <button class="btn-action secondary" id="btnCopy" disabled><i class="ph ph-copy"></i> Kopyala</button>
+                <button class="btn-action secondary" id="btnDownloadImages" disabled style="display:none;"><i class="ph ph-images"></i> Görselleri İndir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- How it works -->
+    <section id="nasil" style="max-width: 700px; margin: 0 auto 64px; padding: 0 24px;">
+        <h2 style="font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 24px;">Nasıl Çalışır?</h2>
+        <div style="display: grid; gap: 16px;">
+            <div style="display: flex; gap: 16px; align-items: flex-start;">
+                <div style="min-width: 40px; height: 40px; border-radius: 10px; background: #f4f4f5; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem;">1</div>
+                <div>
+                    <strong style="display: block; margin-bottom: 4px;">UDF dosyası açılır</strong>
+                    <span style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">.udf dosyası aslında bir ZIP arşividir. İçindeki <code>content.xml</code> dosyası JSZip ile tarayıcınızda çözülür.</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: flex-start;">
+                <div style="min-width: 40px; height: 40px; border-radius: 10px; background: #f4f4f5; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem;">2</div>
+                <div>
+                    <strong style="display: block; margin-bottom: 4px;">XML → Markdown dönüşümü</strong>
+                    <span style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">Paragraflar, kalın/italik formatlamalar, tablolar ve görseller AI-friendly Markdown sözdizimine çevrilir.</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: flex-start;">
+                <div style="min-width: 40px; height: 40px; border-radius: 10px; background: #f4f4f5; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem;">3</div>
+                <div>
+                    <strong style="display: block; margin-bottom: 4px;">İndirin veya yapıştırın</strong>
+                    <span style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">Oluşan .md dosyasını indirip ChatGPT, Claude, Gemini veya herhangi bir LLM aracına yapıştırabilirsiniz.</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Açık kaynak olarak <a href="https://github.com/eimza-kep" target="_blank">eimza-kep</a> tarafından geliştirildi. Hiçbir belge veriniz sunucuya gönderilmez.</p>
+    </footer>
+
+    <input type="file" id="fileInput" accept=".udf,.xml" style="display: none;">
+
+    <!-- Scripts -->
+    <script src="js/jszip.min.js"></script>
+    <script src="js/udf2md-engine.js"></script>
+    <script>
+    (function() {
+        const dropzone = document.getElementById("dropzone");
+        const fileLoaded = document.getElementById("fileLoaded");
+        const fileInput = document.getElementById("fileInput");
+        const btnBrowse = document.getElementById("btnBrowse");
+        const btnNewFile = document.getElementById("btnNewFile");
+        const mdOutput = document.getElementById("mdOutput");
+        const btnDownload = document.getElementById("btnDownload");
+        const btnCopy = document.getElementById("btnCopy");
+        const btnDownloadImages = document.getElementById("btnDownloadImages");
+        const stats = document.getElementById("stats");
+        const fileName = document.getElementById("fileName");
+        const fileMeta = document.getElementById("fileMeta");
+
+        let currentMarkdown = "";
+        let currentImages = [];
+        let currentFileName = "";
+
+        btnBrowse.addEventListener("click", () => fileInput.click());
+
+        fileInput.addEventListener("change", (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleFile(e.target.files[0]);
+                fileInput.value = "";
+            }
+        });
+
+        // Drag & drop
+        dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("dragover"); });
+        dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+        dropzone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropzone.classList.remove("dragover");
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        btnNewFile.addEventListener("click", () => {
+            dropzone.style.display = "flex";
+            fileLoaded.classList.remove("active");
+            mdOutput.textContent = "";
+            stats.textContent = "";
+            btnDownload.disabled = true;
+            btnCopy.disabled = true;
+            btnDownloadImages.style.display = "none";
+            currentMarkdown = "";
+            currentImages = [];
+        });
+
+        btnCopy.addEventListener("click", async () => {
+            if (!currentMarkdown) return;
+            await navigator.clipboard.writeText(currentMarkdown);
+            btnCopy.innerHTML = '<i class="ph-fill ph-check"></i> Kopyalandı!';
+            setTimeout(() => { btnCopy.innerHTML = '<i class="ph ph-copy"></i> Kopyala'; }, 2000);
+        });
+
+        btnDownload.addEventListener("click", () => {
+            if (!currentMarkdown) return;
+            const blob = new Blob([currentMarkdown], { type: "text/markdown;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = currentFileName.replace(/\.(udf|xml)$/i, "") + ".md";
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        btnDownloadImages.addEventListener("click", async () => {
+            if (currentImages.length === 0) return;
+            const zip = new JSZip();
+            currentImages.forEach(img => {
+                zip.file(img.name, img.base64, { base64: true });
+            });
+            const blob = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = currentFileName.replace(/\.(udf|xml)$/i, "") + "_images.zip";
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        async function handleFile(file) {
+            try {
+                currentFileName = file.name;
+                const size = (file.size / 1024).toFixed(1);
+                
+                dropzone.style.display = "none";
+                fileLoaded.classList.add("active");
+                fileName.textContent = file.name;
+                fileMeta.textContent = `${size} KB`;
+                mdOutput.textContent = "Dönüştürülüyor...";
+
+                const result = await window.Udf2Md.convert(file);
+                currentMarkdown = result.markdown;
+                currentImages = result.images;
+
+                mdOutput.textContent = currentMarkdown;
+
+                const chars = currentMarkdown.length;
+                const words = currentMarkdown.trim().split(/\s+/).filter(Boolean).length;
+                const lines = currentMarkdown.split("\n").length;
+                stats.textContent = `${words} kelime · ${lines} satır · ${chars} karakter`;
+
+                btnDownload.disabled = false;
+                btnCopy.disabled = false;
+
+                if (currentImages.length > 0) {
+                    btnDownloadImages.style.display = "inline-flex";
+                    btnDownloadImages.disabled = false;
+                    btnDownloadImages.innerHTML = `<i class="ph ph-images"></i> ${currentImages.length} Görsel İndir`;
+                }
+
+            } catch (err) {
+                mdOutput.textContent = "Hata: " + err.message;
+                console.error(err);
+            }
+        }
+    })();
+    </script>
+</body>
+</html>
