@@ -1,21 +1,30 @@
 # udf2md — UYAP UDF → Markdown Dönüştürücü
 
-> UYAP `.udf` dosyalarını yapay zeka araçlarının (ChatGPT, Gemini, Claude vb.) kolayca okuyabileceği **Markdown (.md)** formatına çeviren %100 tarayıcı tabanlı, açık kaynak araç.
+[![CI](https://github.com/eimza-kep/udf2md/actions/workflows/ci.yml/badge.svg)](https://github.com/eimza-kep/udf2md/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Zero Dependency](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
 
-## 🔒 Neden Bu Araca İhtiyaç Var?
-
-UYAP Doküman Editörü'nün ürettiği `.udf` dosyaları, aslında sıkıştırılmış bir ZIP arşivi içinde özel bir XML yapısıdır. Ne ChatGPT, ne Gemini ne de başka bir LLM bu dosya tipini doğrudan okuyabilir.
-
-Bu araç, `.udf` dosyasını tarayıcınızın belleğinde açar, XML yapısını analiz eder ve yapay zekanın anlayacağı temiz bir Markdown belgesine dönüştürür.
-
-**Hiçbir veri hiçbir sunucuya gönderilmez.** Tüm işlemler `JSZip` ve `DOMParser` kullanılarak doğrudan tarayıcınızda yapılır. İnternet bağlantınızı kapatıp da kullanabilirsiniz.
+> UYAP `.udf` dosyalarını yapay zeka araçlarının (ChatGPT, Gemini, Claude vb.) kolayca okuyabileceği **Markdown (.md)** formatına çeviren %100 tarayıcı ve **CLI** tabanlı, açık kaynak araç.
 
 ## 🚀 Kullanım
 
+### 1. Terminal / CLI Üzerinden (Hızlı & Otomasyon)
+```bash
+# Doğrudan çalıştırma
+node cli.js dilekce.udf
+
+# Dosyaya kaydetme
+node cli.js dilekce.udf cikti.md
+
+# Görselleri klasöre çıkarma
+node cli.js karar.udf -o karar.md --extract-images
+```
+
+### 2. Web Tarayıcısı Üzerinden
 1. `index.html` dosyasını tarayıcınızda açın.
 2. `.udf` dosyanızı sürükleyip bırakın veya "Dosya Seç" düğmesine tıklayın.
 3. Markdown çıktısını **kopyalayın** veya `.md` olarak **indirin**.
-4. ChatGPT, Gemini veya Claude'a yapıştırın.
+4. ChatGPT, Gemini veya Claude'a doğrudan yapıştırın.
 
 ## ✨ Özellikler
 

@@ -3,7 +3,7 @@
  * Converts UYAP Document Format (.udf) archives into clean Markdown.
  * 100% Client-Side — no data ever leaves the browser.
  */
-window.Udf2Md = {
+const Udf2Md = {
 
     /**
      * Main entry: takes a File/Blob/ArrayBuffer and returns { markdown, images[] }
@@ -267,3 +267,10 @@ window.Udf2Md = {
         return text.replace(/\*{1,3}/g, "").replace(/<\/?u>/g, "").trim();
     }
 };
+
+if (typeof window !== "undefined") {
+    window.Udf2Md = Udf2Md;
+}
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = Udf2Md;
+}

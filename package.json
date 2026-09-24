@@ -1,0 +1,29 @@
+{
+  "name": "udf2md",
+  "version": "1.1.0",
+  "description": "UYAP .udf dosyalarını yapay zekanın (LLM) okuyabileceği Markdown formatına dönüştüren tarayıcı ve CLI aracı",
+  "main": "js/udf2md-engine.js",
+  "bin": {
+    "udf2md": "./cli.js"
+  },
+  "scripts": {
+    "test": "node test/test.js",
+    "start": "node cli.js --help"
+  },
+  "keywords": [
+    "udf",
+    "uyap",
+    "markdown",
+    "ai",
+    "llm",
+    "legaltech",
+    "converter",
+    "turkey"
+  ],
+  "author": "eimza-kep",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eimza-kep/udf2md.git"
+  }
+}
