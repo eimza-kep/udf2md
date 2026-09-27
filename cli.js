@@ -19,12 +19,15 @@ Kullanım:
 Seçenekler:
   -o, --output <dosya>      Çıktı Markdown dosya yolu (varsayılan: stdout veya <dosya>.md)
   -i, --extract-images      UDF içindeki görselleri klasöre çıkar
+  -j, --json                Çıktıyı ve meta verileri JSON formatında üretir (LLM / RAG uyumlu)
+  -m, --metadata            Sadece belge meta verilerini (boyut, kelime sayısı, görsel adedi) gösterir
   -h, --help                Bu yardım mesajını göster
   -v, --version             Sürüm bilgisini göster
 
 Örnekler:
   node cli.js dilekce.udf
   node cli.js dilekce.udf dilekce.md
+  node cli.js dilekce.udf --json
   node cli.js karar.udf -o karar.md --extract-images
 `);
 }
@@ -45,6 +48,8 @@ async function main() {
     let inputFile = null;
     let outputFile = null;
     let extractImages = false;
+    let jsonOutput = false;
+    let metadataOnly = false;
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -52,6 +57,10 @@ async function main() {
             outputFile = args[++i];
         } else if (arg === "-i" || arg === "--extract-images") {
             extractImages = true;
+        } else if (arg === "-j" || arg === "--json") {
+            jsonOutput = true;
+        } else if (arg === "-m" || arg === "--metadata") {
+            metadataOnly = true;
         } else if (!arg.startsWith("-")) {
             if (!inputFile) inputFile = arg;
             else if (!outputFile) outputFile = arg;
@@ -146,6 +155,36 @@ async function main() {
             fs.writeFileSync(outPath, Buffer.from(img.base64, "base64"));
         });
         console.error(`[Bilgi] ${images.length} adet görsel '${path.basename(imgDir)}/' klasörüne çıkarıldı.`);
+    }
+
+    const wordCount = (markdown.match(/\b\S+\b/g) || []).length;
+    const charCount = markdown.length;
+
+    const payload = {
+        file_name: path.basename(inputFile),
+        file_path: resolvedInput,
+        file_size_bytes: fileBuffer.length,
+        character_count: charCount,
+        word_count: wordCount,
+        images_count: images.length,
+        converted_at: new Date().toISOString()
+    };
+
+    if (metadataOnly) {
+        console.log(JSON.stringify(payload, null, 2));
+        return;
+    }
+
+    if (jsonOutput) {
+        payload.content_markdown = markdown;
+        if (outputFile) {
+            const resolvedOutput = path.resolve(process.cwd(), outputFile);
+            fs.writeFileSync(resolvedOutput, JSON.stringify(payload, null, 2), "utf-8");
+            console.error(`[Başarılı] JSON kaydedildi: ${outputFile}`);
+        } else {
+            process.stdout.write(JSON.stringify(payload, null, 2));
+        }
+        return;
     }
 
     if (outputFile) {
