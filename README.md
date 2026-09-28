@@ -3,7 +3,7 @@
 [![CI](https://github.com/eimza-kep/udf2md/actions/workflows/ci.yml/badge.svg)](https://github.com/eimza-kep/udf2md/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Zero Dependency](https://img.shields.io/badge/Dependencies-0-success.svg)](package.json)
-[![Blog](https://img.shields.io/badge/Rehber-UYAP%20Teknik%20Destek-red.svg)](https://uyap-teknik-destek.pages.dev/)
+[![Blog](https://img.shields.io/badge/Rehber-UYAP%20Teknik%20Destek-red.svg)](https://uyapteknikdestek.site/)
 
 > UYAP `.udf` dava dosyalarını ve kararlarını yapay zeka araçlarının (ChatGPT, Gemini, Claude, RAG sistemleri) kolayca okuyabileceği ve vektörleştirebileceği **Markdown (.md)** ve **JSON** formatına çeviren %100 tarayıcı ve **CLI** tabanlı açık kaynak araç.
 
@@ -61,9 +61,9 @@ Bu araç [eimza-kep](https://github.com/eimza-kep) organizasyonunun açık kayna
 ---
 
 ## 📚 İlgili Teknik Rehberler
-* 📄 [UYAP Editör Açılmıyor Hatası ve Java Bellek Sorunları Kesin Çözüm](https://uyap-teknik-destek.pages.dev/yazilar/uyap-editor-acilmiyor-hatasi-kesin-cozum.html)
-* 📄 [UDF Dosyası Nedir ve Telefondan/Mac'ten Nasıl Açılır?](https://uyap-teknik-destek.pages.dev/yazilar/udf-dosyasi-nedir-telefondan-nasil-acilir.html)
-* 📄 [DYS ve UYAP Uyuşmazlıkları: Doküman İmzalama Hataları Çözümü](https://uyap-teknik-destek.pages.dev/yazilar/dys-dokuman-yonetim-sistemi-eimza-entegrasyonu.html)
+* 📄 [UYAP Editör Açılmıyor Hatası ve Java Bellek Sorunları Kesin Çözüm](https://uyapteknikdestek.site/yazilar/uyap-editor-acilmiyor-hatasi-kesin-cozum.html)
+* 📄 [UDF Dosyası Nedir ve Telefondan/Mac'ten Nasıl Açılır?](https://uyapteknikdestek.site/yazilar/udf-dosyasi-nedir-telefondan-nasil-acilir.html)
+* 📄 [DYS ve UYAP Uyuşmazlıkları: Doküman İmzalama Hataları Çözümü](https://uyapteknikdestek.site/yazilar/dys-dokuman-yonetim-sistemi-eimza-entegrasyonu.html)
 
 ---
 
