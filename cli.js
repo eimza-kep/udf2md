@@ -18,6 +18,7 @@ Kullanım:
 
 Seçenekler:
   -o, --output <dosya>      Çıktı Markdown dosya yolu (varsayılan: stdout veya <dosya>.md)
+  -t, --text                Markdown etiketlerinden arındırılmış yalın metin (clean text) üretir
   -i, --extract-images      UDF içindeki görselleri klasöre çıkar
   -j, --json                Çıktıyı ve meta verileri JSON formatında üretir (LLM / RAG uyumlu)
   -m, --metadata            Sadece belge meta verilerini (boyut, kelime sayısı, görsel adedi) gösterir
@@ -27,6 +28,7 @@ Seçenekler:
 Örnekler:
   node cli.js dilekce.udf
   node cli.js dilekce.udf dilekce.md
+  node cli.js dilekce.udf --text
   node cli.js dilekce.udf --json
   node cli.js karar.udf -o karar.md --extract-images
 `);
@@ -50,11 +52,14 @@ async function main() {
     let extractImages = false;
     let jsonOutput = false;
     let metadataOnly = false;
+    let plainTextOnly = false;
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg === "-o" || arg === "--output") {
             outputFile = args[++i];
+        } else if (arg === "-t" || arg === "--text") {
+            plainTextOnly = true;
         } else if (arg === "-i" || arg === "--extract-images") {
             extractImages = true;
         } else if (arg === "-j" || arg === "--json") {
@@ -175,8 +180,16 @@ async function main() {
         return;
     }
 
+    const cleanText = markdown
+        .replace(/[*_#`~>]/g, "")
+        .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
     if (jsonOutput) {
         payload.content_markdown = markdown;
+        payload.content_text = cleanText;
         if (outputFile) {
             const resolvedOutput = path.resolve(process.cwd(), outputFile);
             fs.writeFileSync(resolvedOutput, JSON.stringify(payload, null, 2), "utf-8");
@@ -187,12 +200,14 @@ async function main() {
         return;
     }
 
+    const finalOutput = plainTextOnly ? cleanText : markdown;
+
     if (outputFile) {
         const resolvedOutput = path.resolve(process.cwd(), outputFile);
-        fs.writeFileSync(resolvedOutput, markdown, "utf-8");
-        console.error(`[Başarılı] Markdown kaydedildi: ${outputFile}`);
+        fs.writeFileSync(resolvedOutput, finalOutput, "utf-8");
+        console.error(`[Başarılı] ${plainTextOnly ? "Metin" : "Markdown"} kaydedildi: ${outputFile}`);
     } else {
-        process.stdout.write(markdown);
+        process.stdout.write(finalOutput);
     }
 }
 
