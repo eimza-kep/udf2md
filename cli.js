@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * udf2md CLI — UYAP UDF to Markdown Converter
+ * udf2md CLI — UYAP UDF to Markdown Converter v1.3
  * Usage:
  *   node cli.js <input.udf|input.xml> [output.md]
- *   npx udf2md <input.udf> --extract-images
+ *   node cli.js ./dosyalar/ --output-dir ./markdown/ --recursive
+ *   node cli.js dilekce.udf --with-frontmatter
  */
 
 const fs = require("fs");
@@ -11,88 +12,106 @@ const path = require("path");
 
 function printHelp() {
     console.log(`
-udf2md — UYAP UDF to Markdown Converter (CLI)
+udf2md — UYAP UDF to Markdown Converter (CLI) v1.3
 
 Kullanım:
-  node cli.js <dosya.udf|dosya.xml> [cikti.md] [seçenekler]
+  node cli.js <dosya.udf|dosya.xml|klasör> [cikti.md] [seçenekler]
 
 Seçenekler:
-  -o, --output <dosya>      Çıktı Markdown dosya yolu (varsayılan: stdout veya <dosya>.md)
-  -t, --text                Markdown etiketlerinden arındırılmış yalın metin (clean text) üretir
-  -i, --extract-images      UDF içindeki görselleri klasöre çıkar
-  -j, --json                Çıktıyı ve meta verileri JSON formatında üretir (LLM / RAG uyumlu)
-  -m, --metadata            Sadece belge meta verilerini (boyut, kelime sayısı, görsel adedi) gösterir
-  -h, --help                Bu yardım mesajını göster
-  -v, --version             Sürüm bilgisini göster
+  -o, --output <dosya>          Çıktı Markdown dosya yolu (varsayılan: stdout veya <dosya>.md)
+  --output-dir <dizin>          Toplu dönüştürmede çıktıların kaydedileceği dizin
+  -r, --recursive               Belirtilen klasördeki tüm .udf ve .xml dosyalarını özyinelemeli tara
+  -f, --with-frontmatter        Belge başlığı, boyut ve e-imza metaverilerini YAML frontmatter olarak ekle
+  -t, --text                    Markdown etiketlerinden arındırılmış yalın metin (clean text) üretir
+  -i, --extract-images          UDF içindeki görselleri klasöre çıkar
+  -j, --json                    Çıktıyı ve meta verileri JSON formatında üretir (LLM / RAG uyumlu)
+  -m, --metadata                Sadece belge meta verilerini (boyut, kelime sayısı, e-imza vb.) gösterir
+  -h, --help                    Bu yardım mesajını göster
+  -v, --version                 Sürüm bilgisini göster
 
 Örnekler:
   node cli.js dilekce.udf
-  node cli.js dilekce.udf dilekce.md
-  node cli.js dilekce.udf --text
-  node cli.js dilekce.udf --json
-  node cli.js karar.udf -o karar.md --extract-images
+  node cli.js dilekce.udf dilekce.md --with-frontmatter
+  node cli.js ./evraklar/ --output-dir ./md_cikti/ --recursive
+  node cli.js karar.udf --json
 `);
 }
 
-async function main() {
-    const args = process.argv.slice(2);
-    if (args.length === 0 || args.includes("-h") || args.includes("--help")) {
-        printHelp();
-        process.exit(0);
-    }
+function extractSigners(xmlText, zip) {
+    const signers = [];
+    if (!xmlText) return signers;
 
-    if (args.includes("-v") || args.includes("--version")) {
-        const pkg = require("./package.json");
-        console.log(`udf2md v${pkg.version}`);
-        process.exit(0);
-    }
-
-    let inputFile = null;
-    let outputFile = null;
-    let extractImages = false;
-    let jsonOutput = false;
-    let metadataOnly = false;
-    let plainTextOnly = false;
-
-    for (let i = 0; i < args.length; i++) {
-        const arg = args[i];
-        if (arg === "-o" || arg === "--output") {
-            outputFile = args[++i];
-        } else if (arg === "-t" || arg === "--text") {
-            plainTextOnly = true;
-        } else if (arg === "-i" || arg === "--extract-images") {
-            extractImages = true;
-        } else if (arg === "-j" || arg === "--json") {
-            jsonOutput = true;
-        } else if (arg === "-m" || arg === "--metadata") {
-            metadataOnly = true;
-        } else if (!arg.startsWith("-")) {
-            if (!inputFile) inputFile = arg;
-            else if (!outputFile) outputFile = arg;
+    // 1. <signer name="..." date="..." role="..." issuer="...">
+    const signerRegex = /<signer\b([^>]*)>/gi;
+    let sm;
+    while ((sm = signerRegex.exec(xmlText)) !== null) {
+        const attrs = sm[1];
+        const name = (attrs.match(/name=["']([^"']+)["']/i) || [])[1];
+        const date = (attrs.match(/date=["']([^"']+)["']/i) || [])[1];
+        const role = (attrs.match(/role=["']([^"']+)["']/i) || [])[1];
+        const issuer = (attrs.match(/issuer=["']([^"']+)["']/i) || [])[1];
+        if (name && !signers.some(s => s.name === name)) {
+            signers.push({ name, date: date || null, role: role || null, issuer: issuer || null });
         }
     }
 
-    if (!inputFile) {
-        console.error("Hata: Girdi dosyası belirtilmedi.");
-        printHelp();
-        process.exit(1);
+    // 2. <imzaci adSoyad="..." tarih="..." unvan="..." kurum="...">
+    const imzaciRegex = /<imzaci\b([^>]*)>/gi;
+    let im;
+    while ((im = imzaciRegex.exec(xmlText)) !== null) {
+        const attrs = im[1];
+        const name = (attrs.match(/(?:adSoyad|ad|name)=["']([^"']+)["']/i) || [])[1];
+        const date = (attrs.match(/(?:tarih|date)=["']([^"']+)["']/i) || [])[1];
+        const role = (attrs.match(/(?:unvan|gorev|role)=["']([^"']+)["']/i) || [])[1];
+        const issuer = (attrs.match(/(?:kurum|saglayici|issuer)=["']([^"']+)["']/i) || [])[1];
+        if (name && !signers.some(s => s.name === name)) {
+            signers.push({ name, date: date || null, role: role || null, issuer: issuer || null });
+        }
     }
 
-    const resolvedInput = path.resolve(process.cwd(), inputFile);
-    if (!fs.existsSync(resolvedInput)) {
-        console.error(`Hata: '${inputFile}' dosyası bulunamadı.`);
-        process.exit(1);
+    // 3. XML-DSIG X509SubjectName CN=
+    if (xmlText.includes("ds:Signature") || xmlText.includes("X509Certificate") || xmlText.includes("X509SubjectName")) {
+        const cnRegex = /CN=([^,\/<>"\n\r]+)/gi;
+        let cnm;
+        while ((cnm = cnRegex.exec(xmlText)) !== null) {
+            const cn = cnm[1].trim();
+            if (cn && !signers.some(s => s.name === cn)) {
+                signers.push({ name: cn, date: null, role: "Elektronik İmza Sahibi", issuer: null });
+            }
+        }
     }
 
-    const fileBuffer = fs.readFileSync(resolvedInput);
+    return signers;
+}
+
+function generateFrontmatter(payload) {
+    let fm = "---\n";
+    fm += `title: "${payload.file_name.replace(/"/g, '\\"')}"\n`;
+    fm += `converted_at: "${payload.converted_at}"\n`;
+    fm += `word_count: ${payload.word_count}\n`;
+    fm += `character_count: ${payload.character_count}\n`;
+    if (payload.signers && payload.signers.length > 0) {
+        fm += `signers:\n`;
+        payload.signers.forEach(s => {
+            fm += `  - name: "${s.name}"\n`;
+            if (s.role) fm += `    role: "${s.role}"\n`;
+            if (s.date) fm += `    date: "${s.date}"\n`;
+            if (s.issuer) fm += `    issuer: "${s.issuer}"\n`;
+        });
+    }
+    fm += "---\n\n";
+    return fm;
+}
+
+async function parseUdfBuffer(fileBuffer, options = {}) {
     const JSZip = require("./js/jszip.min.js");
-
     let xmlText = null;
     const images = [];
+    let zipInstance = null;
 
-    // Check if it's a zip or plain xml
     try {
         const zip = await JSZip.loadAsync(fileBuffer);
+        zipInstance = zip;
         let contentFile = null;
         zip.forEach((relPath, entry) => {
             const lower = relPath.toLowerCase();
@@ -113,6 +132,17 @@ async function main() {
             xmlText = await contentFile.async("string");
         }
 
+        // Check for signature.xml or signatures.xml
+        zip.forEach(async (relPath, entry) => {
+            const lower = relPath.toLowerCase();
+            if (lower.includes("signature") && lower.endsWith(".xml")) {
+                try {
+                    const sigText = await entry.async("string");
+                    xmlText = (xmlText || "") + "\n" + sigText;
+                } catch (e) {}
+            }
+        });
+
         // Extract images
         const imageExts = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".svg"];
         for (const [p, entry] of Object.entries(zip.files)) {
@@ -121,7 +151,16 @@ async function main() {
             if (imageExts.some(ext => lower.endsWith(ext))) {
                 const base64 = await entry.async("base64");
                 const ext = lower.split(".").pop();
-                const mimeMap = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", bmp: "image/bmp", tiff: "image/tiff", tif: "image/tiff", svg: "image/svg+xml" };
+                const mimeMap = {
+                    png: "image/png",
+                    jpg: "image/jpeg",
+                    jpeg: "image/jpeg",
+                    gif: "image/gif",
+                    bmp: "image/bmp",
+                    tiff: "image/tiff",
+                    tif: "image/tiff",
+                    svg: "image/svg+xml"
+                };
                 images.push({
                     name: p.split("/").pop(),
                     base64,
@@ -133,7 +172,6 @@ async function main() {
         // Plain XML fallback
         xmlText = fileBuffer.toString("utf-8");
         if (!xmlText.includes("<template") && !xmlText.includes("<?xml")) {
-            // Try windows-1254
             try {
                 const iconv = require("util").TextDecoder;
                 xmlText = new iconv("windows-1254").decode(fileBuffer);
@@ -142,28 +180,166 @@ async function main() {
     }
 
     if (!xmlText) {
-        console.error("Hata: UDF içeriği çözülemedi.");
+        throw new Error("UDF içeriği çözülemedi veya geçerli XML bulunamadı.");
+    }
+
+    const signers = extractSigners(xmlText, zipInstance);
+    const markdown = convertXmlToMarkdown(xmlText, images);
+    const cleanText = markdown
+        .replace(/[*_#`~>]/g, "")
+        .replace(/\[(.*?)\]\(.*?\)/g, "$1")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+    return { xmlText, markdown, cleanText, images, signers };
+}
+
+function findUdfFilesRecursively(dir) {
+    let results = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            results = results.concat(findUdfFilesRecursively(fullPath));
+        } else if (entry.isFile()) {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (ext === ".udf" || ext === ".xml") {
+                results.push(fullPath);
+            }
+        }
+    }
+    return results;
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+    if (args.length === 0 || args.includes("-h") || args.includes("--help")) {
+        printHelp();
+        process.exit(0);
+    }
+
+    if (args.includes("-v") || args.includes("--version")) {
+        const pkg = require("./package.json");
+        console.log(`udf2md v${pkg.version}`);
+        process.exit(0);
+    }
+
+    let inputFile = null;
+    let outputFile = null;
+    let outputDir = null;
+    let recursive = false;
+    let withFrontmatter = false;
+    let extractImages = false;
+    let jsonOutput = false;
+    let metadataOnly = false;
+    let plainTextOnly = false;
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === "-o" || arg === "--output") {
+            outputFile = args[++i];
+        } else if (arg === "--output-dir") {
+            outputDir = args[++i];
+        } else if (arg === "-r" || arg === "--recursive") {
+            recursive = true;
+        } else if (arg === "-f" || arg === "--with-frontmatter") {
+            withFrontmatter = true;
+        } else if (arg === "-t" || arg === "--text") {
+            plainTextOnly = true;
+        } else if (arg === "-i" || arg === "--extract-images") {
+            extractImages = true;
+        } else if (arg === "-j" || arg === "--json") {
+            jsonOutput = true;
+        } else if (arg === "-m" || arg === "--metadata") {
+            metadataOnly = true;
+        } else if (!arg.startsWith("-")) {
+            if (!inputFile) inputFile = arg;
+            else if (!outputFile) outputFile = arg;
+        }
+    }
+
+    if (!inputFile) {
+        console.error("Hata: Girdi dosyası veya klasörü belirtilmedi.");
+        printHelp();
         process.exit(1);
     }
 
-    // Convert XML to Markdown using built-in parser
-    const markdown = convertXmlToMarkdown(xmlText, images);
-
-    if (extractImages && images.length > 0) {
-        const imgDir = path.resolve(
-            path.dirname(outputFile ? path.resolve(process.cwd(), outputFile) : resolvedInput),
-            path.basename(inputFile, path.extname(inputFile)) + "_images"
-        );
-        if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
-        images.forEach(img => {
-            const outPath = path.join(imgDir, img.name);
-            fs.writeFileSync(outPath, Buffer.from(img.base64, "base64"));
-        });
-        console.error(`[Bilgi] ${images.length} adet görsel '${path.basename(imgDir)}/' klasörüne çıkarıldı.`);
+    const resolvedInput = path.resolve(process.cwd(), inputFile);
+    if (!fs.existsSync(resolvedInput)) {
+        console.error(`Hata: '${inputFile}' bulunamadı.`);
+        process.exit(1);
     }
 
-    const wordCount = (markdown.match(/\b\S+\b/g) || []).length;
-    const charCount = markdown.length;
+    const stat = fs.statSync(resolvedInput);
+
+    // BATCH DIRECTORY CONVERSION MODE
+    if (stat.isDirectory()) {
+        const files = recursive ? findUdfFilesRecursively(resolvedInput) : fs.readdirSync(resolvedInput)
+            .filter(f => [".udf", ".xml"].includes(path.extname(f).toLowerCase()))
+            .map(f => path.join(resolvedInput, f));
+
+        if (files.length === 0) {
+            console.log(`[Bilgi] Belirtilen dizinde .udf veya .xml dosyası bulunamadı: ${resolvedInput}`);
+            process.exit(0);
+        }
+
+        const targetDir = outputDir ? path.resolve(process.cwd(), outputDir) : resolvedInput;
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+
+        console.log(`\n======================================================`);
+        console.log(` udf2md Toplu Dönüştürme: ${files.length} Dosya İşleniyor`);
+        console.log(` Hedef Dizin: ${targetDir}`);
+        console.log(`======================================================`);
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            const baseName = path.basename(f, path.extname(f));
+            const outPath = path.join(targetDir, baseName + (plainTextOnly ? ".txt" : ".md"));
+
+            try {
+                const fBuffer = fs.readFileSync(f);
+                const parsed = await parseUdfBuffer(fBuffer);
+                const wordCount = (parsed.markdown.match(/\b\S+\b/g) || []).length;
+
+                let finalContent = plainTextOnly ? parsed.cleanText : parsed.markdown;
+                if (withFrontmatter && !plainTextOnly) {
+                    const payload = {
+                        file_name: path.basename(f),
+                        converted_at: new Date().toISOString(),
+                        word_count: wordCount,
+                        character_count: parsed.markdown.length,
+                        signers: parsed.signers
+                    };
+                    finalContent = generateFrontmatter(payload) + finalContent;
+                }
+
+                fs.writeFileSync(outPath, finalContent, "utf-8");
+                successCount++;
+                const sigBadge = parsed.signers.length > 0 ? ` [✍️ ${parsed.signers.length} İmza]` : "";
+                console.log(` [${i + 1}/${files.length}] ✅ ${path.basename(f)} -> ${path.basename(outPath)}${sigBadge}`);
+            } catch (err) {
+                failCount++;
+                console.error(` [${i + 1}/${files.length}] ❌ ${path.basename(f)} Hata: ${err.message}`);
+            }
+        }
+
+        console.log(`------------------------------------------------------`);
+        console.log(`Sonuç: ${successCount} Başarılı | ${failCount} Hatalı (Toplam: ${files.length})`);
+        console.log(`======================================================\n`);
+        return;
+    }
+
+    // SINGLE FILE CONVERSION MODE
+    const fileBuffer = fs.readFileSync(resolvedInput);
+    const parsed = await parseUdfBuffer(fileBuffer);
+    const wordCount = (parsed.markdown.match(/\b\S+\b/g) || []).length;
+    const charCount = parsed.markdown.length;
 
     const payload = {
         file_name: path.basename(inputFile),
@@ -171,7 +347,9 @@ async function main() {
         file_size_bytes: fileBuffer.length,
         character_count: charCount,
         word_count: wordCount,
-        images_count: images.length,
+        images_count: parsed.images.length,
+        signers: parsed.signers,
+        has_signatures: parsed.signers.length > 0,
         converted_at: new Date().toISOString()
     };
 
@@ -180,16 +358,22 @@ async function main() {
         return;
     }
 
-    const cleanText = markdown
-        .replace(/[*_#`~>]/g, "")
-        .replace(/\[(.*?)\]\(.*?\)/g, "$1")
-        .replace(/<[^>]+>/g, "")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
+    if (extractImages && parsed.images.length > 0) {
+        const imgDir = path.resolve(
+            path.dirname(outputFile ? path.resolve(process.cwd(), outputFile) : resolvedInput),
+            path.basename(inputFile, path.extname(inputFile)) + "_images"
+        );
+        if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
+        parsed.images.forEach(img => {
+            const outPath = path.join(imgDir, img.name);
+            fs.writeFileSync(outPath, Buffer.from(img.base64, "base64"));
+        });
+        console.error(`[Bilgi] ${parsed.images.length} adet görsel '${path.basename(imgDir)}/' klasörüne çıkarıldı.`);
+    }
 
     if (jsonOutput) {
-        payload.content_markdown = markdown;
-        payload.content_text = cleanText;
+        payload.content_markdown = parsed.markdown;
+        payload.content_text = parsed.cleanText;
         if (outputFile) {
             const resolvedOutput = path.resolve(process.cwd(), outputFile);
             fs.writeFileSync(resolvedOutput, JSON.stringify(payload, null, 2), "utf-8");
@@ -200,7 +384,10 @@ async function main() {
         return;
     }
 
-    const finalOutput = plainTextOnly ? cleanText : markdown;
+    let finalOutput = plainTextOnly ? parsed.cleanText : parsed.markdown;
+    if (withFrontmatter && !plainTextOnly) {
+        finalOutput = generateFrontmatter(payload) + finalOutput;
+    }
 
     if (outputFile) {
         const resolvedOutput = path.resolve(process.cwd(), outputFile);
@@ -234,9 +421,11 @@ function convertXmlToMarkdown(xmlText, images) {
     }
 
     // Images
-    images.forEach(img => {
-        lines.push(`\n![${img.name}](data:${img.mimeType};base64,${img.base64})\n`);
-    });
+    if (images && images.length > 0) {
+        images.forEach(img => {
+            lines.push(`\n![${img.name}](data:${img.mimeType};base64,${img.base64})\n`);
+        });
+    }
 
     return lines.join("\n\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
@@ -328,7 +517,13 @@ function decodeXml(str) {
         .replace(/&apos;/g, "'");
 }
 
-module.exports = { convertXmlToMarkdown };
+module.exports = {
+    convertXmlToMarkdown,
+    extractSigners,
+    generateFrontmatter,
+    parseUdfBuffer,
+    findUdfFilesRecursively
+};
 
 if (require.main === module) {
     main().catch(err => {
