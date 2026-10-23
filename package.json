@@ -1,13 +1,14 @@
 {
   "name": "udf2md",
-  "version": "1.3.0",
-  "description": "UYAP .udf dosyalarını yapay zekanın (LLM) okuyabileceği Markdown formatına dönüştüren tarayıcı ve CLI aracı",
+  "version": "1.4.0",
+  "description": "UYAP .udf dosyalarını yapay zekanın (LLM / RAG) okuyabileceği Markdown ve JSON formatına dönüştüren tarayıcı, CLI ve LangChain/LlamaIndex DocumentLoader aracı",
   "main": "js/udf2md-engine.js",
   "bin": {
     "udf2md": "./cli.js"
   },
   "scripts": {
     "test": "node test/test.js",
+    "test:python": "python test_udf_loader.py",
     "start": "node cli.js --help"
   },
   "keywords": [
@@ -16,6 +17,9 @@
     "markdown",
     "ai",
     "llm",
+    "rag",
+    "langchain",
+    "llamaindex",
     "legaltech",
     "converter",
     "turkey"

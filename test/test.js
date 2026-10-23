@@ -4,6 +4,7 @@ const path = require("path");
 const {
     convertXmlToMarkdown,
     extractSigners,
+    extractLegalMetadata,
     generateFrontmatter,
     findUdfFilesRecursively
 } = require("../cli.js");
@@ -18,6 +19,15 @@ const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
   <elements>
     <paragraph alignment="2">
       <content fontName="Times New Roman" fontSize="18" bold="true">ANKARA ASLİYE TİCARET MAHKEMESİNE</content>
+    </paragraph>
+    <paragraph alignment="0">
+      <content fontName="Times New Roman" fontSize="12" bold="true">ESAS NO : 2026/123</content>
+    </paragraph>
+    <paragraph alignment="0">
+      <content fontName="Times New Roman" fontSize="12" bold="true">KARAR NO: 2026/456</content>
+    </paragraph>
+    <paragraph alignment="2">
+      <content fontName="Times New Roman" fontSize="14" bold="true">GEREKÇELİ KARAR</content>
     </paragraph>
     <paragraph alignment="3">
       <content fontName="Times New Roman" fontSize="12" bold="true">DAVACI:</content>
@@ -59,21 +69,36 @@ assert.strictEqual(signers[0].name, "Av. Mehmet Öz", "Signer name should match"
 assert.strictEqual(signers[0].role, "Davacı Vekili", "Signer role should match");
 assert.strictEqual(signers[0].issuer, "TÜRKTRUST", "Signer issuer should match");
 
-// Test 3: Frontmatter generation
+// Test 3: Legal metadata extraction (Court, Esas No, Karar No, Document Type)
+const legalMeta = extractLegalMetadata(md, sampleXml);
+assert(legalMeta.court && legalMeta.court.includes("ANKARA ASLİYE TİCARET MAHKEMESİNE"), "Court name should be extracted");
+assert.strictEqual(legalMeta.case_number, "2026/123", "Case number should match 2026/123");
+assert.strictEqual(legalMeta.decision_number, "2026/456", "Decision number should match 2026/456");
+assert.strictEqual(legalMeta.document_type, "Gerekçeli Karar", "Document type should match Gerekçeli Karar");
+
+// Test 4: Frontmatter generation with legal metadata
 const payload = {
-    file_name: "ornek_dilekce.udf",
+    file_name: "ornek_karar.udf",
     converted_at: "2026-10-20T12:00:00Z",
+    court: legalMeta.court,
+    case_number: legalMeta.case_number,
+    decision_number: legalMeta.decision_number,
+    document_type: legalMeta.document_type,
     word_count: 50,
     character_count: 320,
     signers: signers
 };
 const fm = generateFrontmatter(payload);
 assert(fm.startsWith("---\n"), "Frontmatter must start with delimiter ---");
-assert(fm.includes('title: "ornek_dilekce.udf"'), "Title should be in frontmatter");
+assert(fm.includes('title: "ornek_karar.udf"'), "Title should be in frontmatter");
+assert(fm.includes('court: "ANKARA ASLİYE TİCARET MAHKEMESİNE"'), "Court should be in frontmatter");
+assert(fm.includes('case_number: "2026/123"'), "Case number should be in frontmatter");
+assert(fm.includes('decision_number: "2026/456"'), "Decision number should be in frontmatter");
+assert(fm.includes('document_type: "Gerekçeli Karar"'), "Document type should be in frontmatter");
 assert(fm.includes('name: "Av. Mehmet Öz"'), "Signer name should be in frontmatter");
 assert(fm.includes('role: "Davacı Vekili"'), "Signer role should be in frontmatter");
 
-// Test 4: Recursive file discovery
+// Test 5: Recursive file discovery
 const dummyDir = path.join(__dirname, "temp_batch_test");
 const subDir = path.join(dummyDir, "subfolder");
 try {
@@ -90,4 +115,4 @@ try {
     }
 }
 
-console.log("All unit tests (Markdown, E-İmza Signers, Frontmatter, Recursive Batch) passed successfully!");
+console.log("All Node.js unit tests (Markdown, E-İmza Signers, Legal Metadata, Frontmatter, Recursive Batch) passed successfully!");

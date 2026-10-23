@@ -19,5 +19,13 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-    - run: node test/test.js
-    - run: node cli.js --help
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Run Node.js tests
+      run: node test/test.js
+    - name: Run CLI help
+      run: node cli.js --help
+    - name: Run Python DocumentLoader tests
+      run: python test_udf_loader.py

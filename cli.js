@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * udf2md CLI — UYAP UDF to Markdown Converter v1.3
+ * udf2md CLI — UYAP UDF to Markdown & LLM/RAG Converter v1.4
  * Usage:
  *   node cli.js <input.udf|input.xml> [output.md]
  *   node cli.js ./dosyalar/ --output-dir ./markdown/ --recursive
  *   node cli.js dilekce.udf --with-frontmatter
+ *   node cli.js karar.udf --json
  */
 
 const fs = require("fs");
@@ -12,7 +13,7 @@ const path = require("path");
 
 function printHelp() {
     console.log(`
-udf2md — UYAP UDF to Markdown Converter (CLI) v1.3
+udf2md — UYAP UDF to Markdown Converter (CLI) v1.4
 
 Kullanım:
   node cli.js <dosya.udf|dosya.xml|klasör> [cikti.md] [seçenekler]
@@ -21,11 +22,11 @@ Seçenekler:
   -o, --output <dosya>          Çıktı Markdown dosya yolu (varsayılan: stdout veya <dosya>.md)
   --output-dir <dizin>          Toplu dönüştürmede çıktıların kaydedileceği dizin
   -r, --recursive               Belirtilen klasördeki tüm .udf ve .xml dosyalarını özyinelemeli tara
-  -f, --with-frontmatter        Belge başlığı, boyut ve e-imza metaverilerini YAML frontmatter olarak ekle
+  -f, --with-frontmatter        Belge başlığı, mahkeme, esas/karar no ve e-imza metaverilerini YAML frontmatter olarak ekle
   -t, --text                    Markdown etiketlerinden arındırılmış yalın metin (clean text) üretir
   -i, --extract-images          UDF içindeki görselleri klasöre çıkar
-  -j, --json                    Çıktıyı ve meta verileri JSON formatında üretir (LLM / RAG uyumlu)
-  -m, --metadata                Sadece belge meta verilerini (boyut, kelime sayısı, e-imza vb.) gösterir
+  -j, --json                    Çıktıyı ve hukuki meta verileri JSON formatında üretir (LLM / RAG uyumlu)
+  -m, --metadata                Sadece belge meta verilerini (mahkeme, esas no, boyut, e-imza vb.) gösterir
   -h, --help                    Bu yardım mesajını göster
   -v, --version                 Sürüm bilgisini göster
 
@@ -84,9 +85,76 @@ function extractSigners(xmlText, zip) {
     return signers;
 }
 
+function extractLegalMetadata(text, xmlText) {
+    const meta = {
+        court: null,
+        case_number: null,
+        decision_number: null,
+        document_type: null
+    };
+
+    if (!text && !xmlText) return meta;
+    const combined = (text || "") + "\n" + (xmlText || "");
+
+    // 1. Mahkeme Adı
+    const courtMatch = combined.match(
+        /((?:T\.?C\.?\s+)?(?:[A-ZÇĞİÖŞÜ0-9\.\s\/\-]{3,70})\s+(?:MAHKEMESİNE|HAKİMLİĞİNE|BAŞKANLIĞINA|MÜDÜRLÜĞÜNE|DAİRESİNE|BAŞSAVCILIĞINA|SAVCILIĞINA))/i
+    );
+    if (courtMatch) {
+        const cleanCourt = courtMatch[1].replace(/\s+/g, " ").trim();
+        if (cleanCourt.length <= 90 && !cleanCourt.startsWith("#")) {
+            meta.court = cleanCourt;
+        }
+    }
+
+    // 2. Esas No: örn "Esas No : 2026/123", "ESAS NO: 2025/456", "2024/789 E."
+    const esasMatch = combined.match(
+        /(?:ESAS\s*(?:NO|No)?\s*[:\.\/]?\s*([0-9]{4}\s*[\/\-]\s*[0-9]+)|([0-9]{4}\s*[\/\-]\s*[0-9]+)\s*E\.)/i
+    );
+    if (esasMatch) {
+        meta.case_number = (esasMatch[1] || esasMatch[2]).replace(/\s+/g, "");
+    }
+
+    // 3. Karar No: örn "Karar No : 2026/456", "KARAR NO: 2026/99", "2024/12 K."
+    const kararMatch = combined.match(
+        /(?:KARAR\s*(?:NO|No)?\s*[:\.\/]?\s*([0-9]{4}\s*[\/\-]\s*[0-9]+)|([0-9]{4}\s*[\/\-]\s*[0-9]+)\s*K\.)/i
+    );
+    if (kararMatch) {
+        meta.decision_number = (kararMatch[1] || kararMatch[2]).replace(/\s+/g, "");
+    }
+
+    // 4. Belge Türü Tespiti
+    const upper = combined.toUpperCase();
+    if (upper.includes("GEREKÇELİ KARAR") || upper.includes("K A R A R")) {
+        meta.document_type = "Gerekçeli Karar";
+    } else if (upper.includes("TENSİP ZAPTI") || upper.includes("TENSİP TUTANAĞI")) {
+        meta.document_type = "Tensip Zaptı";
+    } else if (upper.includes("DAVA DİLEKÇESİ")) {
+        meta.document_type = "Dava Dilekçesi";
+    } else if (upper.includes("CEVAP DİLEKÇESİ")) {
+        meta.document_type = "Cevap Dilekçesi";
+    } else if (upper.includes("İHTARNAME")) {
+        meta.document_type = "İhtarname";
+    } else if (upper.includes("BİLİRKİŞİ RAPORU")) {
+        meta.document_type = "Bilirkişi Raporu";
+    } else if (upper.includes("İCRA EMRİ") || upper.includes("ÖDEME EMRİ")) {
+        meta.document_type = "İcra / Ödeme Emri";
+    } else if (upper.includes("DURUŞMA TUTANAĞI") || upper.includes("CELSE TUTANAĞI")) {
+        meta.document_type = "Duruşma Tutanağı";
+    } else if (meta.court) {
+        meta.document_type = "Hukuki Başvuru / Dilekçe";
+    }
+
+    return meta;
+}
+
 function generateFrontmatter(payload) {
     let fm = "---\n";
     fm += `title: "${payload.file_name.replace(/"/g, '\\"')}"\n`;
+    if (payload.court) fm += `court: "${payload.court.replace(/"/g, '\\"')}"\n`;
+    if (payload.case_number) fm += `case_number: "${payload.case_number}"\n`;
+    if (payload.decision_number) fm += `decision_number: "${payload.decision_number}"\n`;
+    if (payload.document_type) fm += `document_type: "${payload.document_type}"\n`;
     fm += `converted_at: "${payload.converted_at}"\n`;
     fm += `word_count: ${payload.word_count}\n`;
     fm += `character_count: ${payload.character_count}\n`;
@@ -192,7 +260,9 @@ async function parseUdfBuffer(fileBuffer, options = {}) {
         .replace(/\n{3,}/g, "\n\n")
         .trim();
 
-    return { xmlText, markdown, cleanText, images, signers };
+    const legalMeta = extractLegalMetadata(markdown, xmlText);
+
+    return { xmlText, markdown, cleanText, images, signers, legalMeta };
 }
 
 function findUdfFilesRecursively(dir) {
@@ -312,6 +382,10 @@ async function main() {
                     const payload = {
                         file_name: path.basename(f),
                         converted_at: new Date().toISOString(),
+                        court: parsed.legalMeta ? parsed.legalMeta.court : null,
+                        case_number: parsed.legalMeta ? parsed.legalMeta.case_number : null,
+                        decision_number: parsed.legalMeta ? parsed.legalMeta.decision_number : null,
+                        document_type: parsed.legalMeta ? parsed.legalMeta.document_type : null,
                         word_count: wordCount,
                         character_count: parsed.markdown.length,
                         signers: parsed.signers
@@ -322,7 +396,8 @@ async function main() {
                 fs.writeFileSync(outPath, finalContent, "utf-8");
                 successCount++;
                 const sigBadge = parsed.signers.length > 0 ? ` [✍️ ${parsed.signers.length} İmza]` : "";
-                console.log(` [${i + 1}/${files.length}] ✅ ${path.basename(f)} -> ${path.basename(outPath)}${sigBadge}`);
+                const metaBadge = parsed.legalMeta.case_number ? ` [⚖️ ${parsed.legalMeta.case_number}]` : "";
+                console.log(` [${i + 1}/${files.length}] ✅ ${path.basename(f)} -> ${path.basename(outPath)}${metaBadge}${sigBadge}`);
             } catch (err) {
                 failCount++;
                 console.error(` [${i + 1}/${files.length}] ❌ ${path.basename(f)} Hata: ${err.message}`);
@@ -347,6 +422,10 @@ async function main() {
         file_size_bytes: fileBuffer.length,
         character_count: charCount,
         word_count: wordCount,
+        court: parsed.legalMeta ? parsed.legalMeta.court : null,
+        case_number: parsed.legalMeta ? parsed.legalMeta.case_number : null,
+        decision_number: parsed.legalMeta ? parsed.legalMeta.decision_number : null,
+        document_type: parsed.legalMeta ? parsed.legalMeta.document_type : null,
         images_count: parsed.images.length,
         signers: parsed.signers,
         has_signatures: parsed.signers.length > 0,
@@ -520,6 +599,7 @@ function decodeXml(str) {
 module.exports = {
     convertXmlToMarkdown,
     extractSigners,
+    extractLegalMetadata,
     generateFrontmatter,
     parseUdfBuffer,
     findUdfFilesRecursively
